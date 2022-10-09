@@ -8,11 +8,10 @@ message InitialAgreement {
   bytes P = 1; //Large prime
   bytes Q = 2; //large prime such that q % p-1 = 0
   int64 G = 3; //rand int with some restrictions
-  bytes H = 4; //h = g^a % p
 }
 
 message Commitment {
-  int64 DiceRoll = 1;
+  bytes H = 4; //h = g^a % p
 }
 
 message CommitmentOpener {
@@ -24,10 +23,16 @@ message Ack {
   bool IsAcknowledged = 1;
 }
 
+message RealRoll {
+  bool IsAcknowledged = 1;
+  bool isGuessed = 2;
+  bytes DieRoll = 3;
+}
+
 service RollingDieService {
   rpc SetupAgreements(InitialAgreement) returns (Ack);
   rpc SendCommitment(Commitment) returns (Ack);
-  rpc OpenCommitment(CommitmentOpener) returns (Ack);
+  rpc OpenCommitment(CommitmentOpener) returns (RealRoll);
 }
 
 //protoc --go_out=. --go_opt=paths=source_relative     --go-grpc_out=. --go-grpc_opt=paths=source_relative     proto/proto-file.proto

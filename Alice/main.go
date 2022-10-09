@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	crand "crypto/rand"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"google.golang.org/grpc"
@@ -16,13 +17,16 @@ import (
 	"strings"
 )
 
-var Logs = flag.Bool("log", true, "determines if you want to see logs")
+var Logs = flag.Bool("log", false, "determines if you want to see logs")
 
-var p big.Int //Large prime such that p = 2 q + 1
-var q big.Int //large prime
-var g int64   //rand int with some restrictions
-var h big.Int //h = g^a % p
-var a int64   //what die roll Alice thinks it is
+var p big.Int            //Large prime such that p = 2 q + 1
+var q big.Int            //large prime
+var g int64              //rand int with some restrictions
+var r int64              //rand int with some restrictions
+var h big.Int            //h = g^a % p
+var c big.Int            //commitment
+var a int64              //what die roll Alice thinks it is
+var dieRolledInt big.Int //What was rolled
 
 func MakeParameters() {
 	// === find q ===
@@ -35,32 +39,41 @@ func MakeParameters() {
 	// === find g ===
 	g = int64(rand.Intn(100))
 
+	// === find r ===
+	r = int64(rand.Intn(100))
+
 	// === find a ===
 	a = int64(RollDie())
 
 	// === find h ===
-	h.Mod(big.NewInt(int64(math.Pow(float64(g), float64(a)))), &p)
+	//Hide what Alice thinks the die roll was
+	h.Exp(big.NewInt(g), big.NewInt(a), nil)
+	part1 := big.NewInt(int64(math.Pow(float64(g), float64(a))))
+	part2 := h.Exp(&h, big.NewInt(r), nil)
+	c.Mul(part1, part2)
+	//c.Mod(part1.Mul(part1, part2), &p)
 
 	//=== print ===
 	if *Logs {
-		log.Printf("Setup \n p: %v \n q: %v \n g: %v \n h: %v \n a: %v \n ", p, q, g, h, a)
+		log.Printf("Setup \n p: %v \nq: %v \ng: %v \na: %v \nh: %v ", p, q, g, a, h)
 	}
 }
 
 func main() {
 	flag.Parse()
-	MakeParameters()
 
-	SetupConnection()
 	scanner := bufio.NewScanner(os.Stdin)
+	fmt.Println("=====")
 	fmt.Println("To roll a die write roll and press enter")
 	fmt.Println("To end the program press control + c")
+	fmt.Println("=====")
+	fmt.Println("")
 
 	for scanner.Scan() {
-		UserName := scanner.Text()
-		UserName = strings.TrimSpace(UserName)
-		if len(UserName) < 1 {
-
+		command := scanner.Text()
+		command = strings.TrimSpace(command)
+		if command == "roll" {
+			MakeCommitment()
 		} else {
 			fmt.Println("Please write a known command")
 		}
@@ -73,9 +86,8 @@ func SetupConnection() {
 
 	mp, _ := p.MarshalText()
 	mq, _ := q.MarshalText()
-	mh, _ := h.MarshalText()
 
-	req := proto.InitialAgreement{P: mp, Q: mq, G: g, H: mh}
+	req := proto.InitialAgreement{P: mp, Q: mq, G: g}
 
 	connection, err := grpc.Dial(toAddr(8080), grpc.WithInsecure())
 
@@ -95,14 +107,74 @@ func SetupConnection() {
 	}
 
 	fmt.Printf("Setup is acknowledged: %v\n", response.IsAcknowledged)
+	fmt.Println("")
 }
 
 func MakeCommitment() {
-	//min := 1
-	//max := 9999
+	MakeParameters()
+	SetupConnection()
 
-	//r := rand.Intn(max-min) + min
+	mh, _ := c.MarshalText()
+	req := proto.Commitment{H: mh}
 
+	//=== print ===
+	if *Logs {
+		fmt.Println("")
+		log.Printf("ALICE BETS ON:\n%v \nHASH H INTO:\n%v \n", a, h)
+		fmt.Println("")
+	}
+
+	connection, err := grpc.Dial(toAddr(8080), grpc.WithInsecure())
+
+	defer connection.Close()
+	if err != nil {
+		log.Fatalf("Failed to dial: %v", err)
+	}
+
+	ctx := context.Background()
+
+	client := proto.NewRollingDieServiceClient(connection)
+
+	response, err := client.SendCommitment(ctx, &req)
+	if err != nil {
+		fmt.Println("Connection failed")
+		return
+	}
+
+	fmt.Printf("Commitment is Acknowledged: %v\n", response.IsAcknowledged)
+	fmt.Println("")
+	if response.IsAcknowledged {
+		OpenCommitment()
+	}
+}
+
+func OpenCommitment() {
+	req := proto.CommitmentOpener{Roll: a, RandInt: r}
+
+	connection, err := grpc.Dial(toAddr(8080), grpc.WithInsecure())
+
+	defer connection.Close()
+	if err != nil {
+		log.Fatalf("Failed to dial: %v", err)
+	}
+
+	ctx := context.Background()
+
+	client := proto.NewRollingDieServiceClient(connection)
+
+	response, err := client.OpenCommitment(ctx, &req)
+	if err != nil {
+		fmt.Println("Connection failed")
+		return
+	}
+
+	err = json.Unmarshal(response.DieRoll, &dieRolledInt)
+	if err != nil {
+		log.Fatalf("Unmarshelling failed")
+	}
+
+	fmt.Printf("The Roll: %v\nYou commited to the guess: %v\n", dieRolledInt, a)
+	fmt.Println("")
 }
 
 func RollDie() int {

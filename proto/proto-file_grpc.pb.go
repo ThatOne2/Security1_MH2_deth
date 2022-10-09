@@ -24,7 +24,7 @@ const _ = grpc.SupportPackageIsVersion7
 type RollingDieServiceClient interface {
 	SetupAgreements(ctx context.Context, in *InitialAgreement, opts ...grpc.CallOption) (*Ack, error)
 	SendCommitment(ctx context.Context, in *Commitment, opts ...grpc.CallOption) (*Ack, error)
-	OpenCommitment(ctx context.Context, in *CommitmentOpener, opts ...grpc.CallOption) (*Ack, error)
+	OpenCommitment(ctx context.Context, in *CommitmentOpener, opts ...grpc.CallOption) (*RealRoll, error)
 }
 
 type rollingDieServiceClient struct {
@@ -53,8 +53,8 @@ func (c *rollingDieServiceClient) SendCommitment(ctx context.Context, in *Commit
 	return out, nil
 }
 
-func (c *rollingDieServiceClient) OpenCommitment(ctx context.Context, in *CommitmentOpener, opts ...grpc.CallOption) (*Ack, error) {
-	out := new(Ack)
+func (c *rollingDieServiceClient) OpenCommitment(ctx context.Context, in *CommitmentOpener, opts ...grpc.CallOption) (*RealRoll, error) {
+	out := new(RealRoll)
 	err := c.cc.Invoke(ctx, "/proto.RollingDieService/OpenCommitment", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func (c *rollingDieServiceClient) OpenCommitment(ctx context.Context, in *Commit
 type RollingDieServiceServer interface {
 	SetupAgreements(context.Context, *InitialAgreement) (*Ack, error)
 	SendCommitment(context.Context, *Commitment) (*Ack, error)
-	OpenCommitment(context.Context, *CommitmentOpener) (*Ack, error)
+	OpenCommitment(context.Context, *CommitmentOpener) (*RealRoll, error)
 	mustEmbedUnimplementedRollingDieServiceServer()
 }
 
@@ -82,7 +82,7 @@ func (UnimplementedRollingDieServiceServer) SetupAgreements(context.Context, *In
 func (UnimplementedRollingDieServiceServer) SendCommitment(context.Context, *Commitment) (*Ack, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendCommitment not implemented")
 }
-func (UnimplementedRollingDieServiceServer) OpenCommitment(context.Context, *CommitmentOpener) (*Ack, error) {
+func (UnimplementedRollingDieServiceServer) OpenCommitment(context.Context, *CommitmentOpener) (*RealRoll, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method OpenCommitment not implemented")
 }
 func (UnimplementedRollingDieServiceServer) mustEmbedUnimplementedRollingDieServiceServer() {}
